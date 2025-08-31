@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
       route: {
         startCoords,
         endCoords,
-        geometry: routeData.geometry,
-        distance: Math.round(routeData.distance), // メートル単位
-        duration: Math.round(routeData.duration / 60), // 分単位
-        steps: routeData.legs[0]?.steps || []
+        geometry: (routeData as any).geometry,
+        distance: Math.round((routeData as any).distance), // メートル単位
+        duration: Math.round((routeData as any).duration / 60), // 分単位
+        steps: (routeData as any).legs?.[0]?.steps || []
       }
     })
 
