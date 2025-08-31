@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { CheckCircle2, MapPin, Camera, Clock, ArrowLeft, Home } from 'lucide-react'
@@ -22,7 +22,7 @@ interface WalkSummary {
   completedMissions: number
 }
 
-export default function WalkCompletePage() {
+function WalkCompleteContent() {
   const searchParams = useSearchParams()
   const walkData = searchParams.get('data')
   const [summary, setSummary] = useState<WalkSummary | null>(null)
@@ -209,5 +209,20 @@ export default function WalkCompletePage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function WalkCompletePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">散歩データを読み込み中...</p>
+        </div>
+      </div>
+    }>
+      <WalkCompleteContent />
+    </Suspense>
   )
 }
