@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Walk {
+  id          String    @id @default(uuid())
+  startLat    Float
+  startLng    Float
+  endLat      Float
+  endLng      Float
+  missions    String    // JSON array of missions
+  startTime   DateTime
+  endTime     DateTime?
+  distance    Float?
+  steps       Int?
+  createdAt   DateTime  @default(now())
+  
+  photos      Photo[]
+  routes      Route[]
+}
+
+model Photo {
+  id          String    @id @default(uuid())
+  walkId      String
+  missionType String    // 'mission' or 'favorite'
+  missionName String?   // mission name if missionType is 'mission'
+  lat         Float
+  lng         Float
+  imageUrl    String?
+  timestamp   DateTime
+  createdAt   DateTime  @default(now())
+  
+  walk        Walk      @relation(fields: [walkId], references: [id], onDelete: Cascade)
+}
+
+model Route {
+  id        String   @id @default(uuid())
+  walkId    String
+  lat       Float
+  lng       Float
+  timestamp DateTime
+  createdAt DateTime @default(now())
+  
+  walk      Walk     @relation(fields: [walkId], references: [id], onDelete: Cascade)
+}
