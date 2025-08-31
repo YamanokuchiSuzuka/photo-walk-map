@@ -6,6 +6,14 @@ import { prisma } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
+    // Vercel本番環境ではファイルアップロードを一時的に無効化
+    if (process.env.VERCEL === '1') {
+      return NextResponse.json({ 
+        success: false, 
+        message: '本番環境ではファイルアップロードは現在利用できません。開発版をお使いください。' 
+      })
+    }
+
     const data = await request.formData()
     const file: File | null = data.get('file') as unknown as File
     const photoId = data.get('photoId') as string

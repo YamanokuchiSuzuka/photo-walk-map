@@ -3,6 +3,15 @@ import { prisma } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
+    // Vercel本番環境では一時的にメモリ内処理
+    if (process.env.VERCEL === '1') {
+      return NextResponse.json({ 
+        success: true, 
+        message: '散歩データを記録しました（本番環境では永続化されません）',
+        walk: { id: Date.now() }
+      })
+    }
+
     const body = await request.json()
     const {
       startLat,
@@ -60,6 +69,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    // Vercel本番環境では空の履歴を返す
+    if (process.env.VERCEL === '1') {
+      return NextResponse.json({ 
+        walks: [],
+        message: 'デモ環境のため散歩履歴は表示されません'
+      })
+    }
+
     const walks = await prisma.walk.findMany({
       include: {
         photos: true,
