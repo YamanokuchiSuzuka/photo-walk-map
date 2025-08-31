@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         distance: distance ? parseFloat(distance) : null,
         steps: steps ? parseInt(steps) : null,
         photos: {
-          create: photos.map((photo: any) => ({
+          create: photos.map((photo: { missionType?: string; missionName: string; lat: number; lng: number; timestamp?: Date }) => ({
             missionType: photo.missionType || 'mission',
             missionName: photo.missionName,
             lat: parseFloat(photo.lat),
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
           }))
         },
         routes: {
-          create: routes.map((route: any) => ({
+          create: routes.map((route: { lat: number; lng: number; timestamp?: Date }) => ({
             lat: parseFloat(route.lat),
             lng: parseFloat(route.lng),
             timestamp: new Date(route.timestamp || new Date())

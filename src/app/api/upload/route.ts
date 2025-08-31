@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile } from 'fs/promises'
+import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import { prisma } from '@/lib/db'
 
@@ -40,9 +41,8 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('ファイル書き込みエラー:', error)
       // uploads ディレクトリが存在しない場合は作成
-      const fs = require('fs')
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true })
+      if (!existsSync(uploadDir)) {
+        mkdirSync(uploadDir, { recursive: true })
         await writeFile(filePath, buffer)
       } else {
         throw error

@@ -127,7 +127,7 @@ async function getWalkingRoute(
   start: [number, number], 
   end: [number, number], 
   token: string
-): Promise<any | null> {
+): Promise<unknown | null> {
   try {
     const [startLng, startLat] = start
     const [endLng, endLat] = end

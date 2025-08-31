@@ -40,7 +40,7 @@ function getDefaultMissions(): Mission[] {
 interface RouteInfo {
   startCoords: [number, number]
   endCoords: [number, number]
-  geometry: any
+  geometry: unknown
   distance: number
   duration: number
 }

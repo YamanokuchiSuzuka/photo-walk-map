@@ -16,7 +16,7 @@ interface MapProps {
     lng: number
     missionName?: string
   }>
-  routeGeometry?: any // GeoJSON geometry for route
+  routeGeometry?: unknown // GeoJSON geometry for route
   showRoute?: boolean
 }
 
