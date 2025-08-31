@@ -1,33 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Photo Walk Map
+
+Photo walk mapping app with AI missions - 散歩写真マップアプリ
+
+## Features
+
+- **Walk Planning**: Set start and end locations for your photo walk
+- **AI Mission Generation**: Automatically generate photography missions based on location and season
+- **Real-time GPS Tracking**: Record photo locations during your walk
+- **Mission Progress Tracking**: Track completion of photography challenges
+- **Photo Upload**: Upload and manage your photos from each walk
+- **Personal Photo Map**: View all your photo locations on an interactive map
+- **Walk History**: Browse your previous walks and achievements
+
+## Tech Stack
+
+- **Framework**: Next.js 15 with TypeScript
+- **Styling**: Tailwind CSS
+- **Database**: SQLite with Prisma ORM
+- **Maps**: Mapbox GL JS
+- **AI**: OpenAI API for mission generation
+- **Deployment**: Vercel
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies:
+
+```bash
+npm install
+```
+
+Set up your environment variables in `.env.local`:
+
+```bash
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_token
+OPENAI_API_KEY=your_openai_api_key
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Database Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Initialize the database:
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx prisma migrate dev --name init
+```
 
 ## Deploy on Vercel
 
