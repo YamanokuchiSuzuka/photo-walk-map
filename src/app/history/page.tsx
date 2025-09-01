@@ -102,7 +102,10 @@ export default function HistoryPage() {
     )
   }
 
-  if (error) {
+  // データベースエラーがあってもローカル画像があれば表示
+  const hasLocalImages = uploadedImages.length > 0
+  
+  if (error && !hasLocalImages) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
@@ -128,7 +131,51 @@ export default function HistoryPage() {
           <h1 className="text-xl font-bold text-gray-800 ml-2">散歩履歴</h1>
         </div>
 
-        {walks.length === 0 ? (
+        {/* データベースエラー時の警告表示 */}
+        {error && hasLocalImages && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <p className="text-yellow-800 text-sm">
+              ⚠️ データベース接続エラー: {error}
+            </p>
+            <p className="text-yellow-700 text-sm mt-1">
+              アップロード済みの画像のみ表示しています
+            </p>
+          </div>
+        )}
+
+        {/* アップロード済み画像セクション */}
+        {hasLocalImages && (
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-800 flex items-center mb-4">
+              <Image className="h-5 w-5 mr-2" />
+              アップロード済みの写真
+            </h2>
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {uploadedImages.map((img, index) => (
+                  <div key={index} className="relative group">
+                    <img 
+                      src={img.imageUrl} 
+                      alt={img.missionName}
+                      className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setSelectedImage({
+                        imageUrl: img.imageUrl,
+                        alt: img.missionName,
+                        missionName: img.missionName,
+                        timestamp: img.timestamp
+                      })}
+                    />
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded">
+                      {img.missionName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {walks.length === 0 && !hasLocalImages ? (
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <Camera className="h-16 w-16 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-600 mb-2">まだ散歩記録がありません</h2>
