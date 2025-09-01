@@ -1,34 +1,55 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Camera, Upload, X, CheckCircle2 } from 'lucide-react'
+import { Camera, Upload, X, CheckCircle2, MapPin } from 'lucide-react'
+import { saveUploadedImage } from '@/utils/imageStorage'
+import Map from './Map'
+
+interface PhotoRecord {
+  id: string
+  lat: number
+  lng: number
+  missionName: string
+}
 
 interface PhotoUploaderProps {
-  photos: Array<{
+  photoRecords: PhotoRecord[] // 散歩中の撮影記録
+  missions: Array<{
     id: string
-    missionName: string
-    timestamp: Date | string
+    name: string
+    description: string
+    completed?: boolean
   }>
+  walkId?: string
   onUploadComplete?: () => void
 }
 
 interface UploadResult {
   photoId: string
   file: File
+  selectedRecord: string // 'none' | photoRecordId
+  recordInfo: string // 表示用テキスト
+  missionName: string
+  lat?: number
+  lng?: number
   status: 'pending' | 'uploading' | 'success' | 'error'
   imageUrl?: string
   error?: string
 }
 
-export default function PhotoUploader({ photos, onUploadComplete }: PhotoUploaderProps) {
+export default function PhotoUploader({ photoRecords, missions, walkId, onUploadComplete }: PhotoUploaderProps) {
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [showMap, setShowMap] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (files: FileList) => {
     const newResults: UploadResult[] = Array.from(files).map((file, index) => ({
-      photoId: photos[index]?.id || '',
+      photoId: `upload_${Date.now()}_${index}`,
       file,
+      selectedRecord: 'none', // デフォルトは「フリー写真」
+      recordInfo: '🆓 フリー写真（撮影記録なし）',
+      missionName: 'フリー写真',
       status: 'pending'
     }))
 
@@ -37,6 +58,38 @@ export default function PhotoUploader({ photos, onUploadComplete }: PhotoUploade
 
   const removeFile = (index: number) => {
     setUploadResults(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const updateRecordSelection = (index: number, recordId: string) => {
+    setUploadResults(prev =>
+      prev.map((r, idx) => {
+        if (idx === index) {
+          if (recordId === 'none') {
+            return {
+              ...r,
+              selectedRecord: 'none',
+              recordInfo: '🆓 フリー写真（撮影記録なし）',
+              missionName: 'フリー写真',
+              lat: undefined,
+              lng: undefined
+            }
+          } else {
+            const record = photoRecords.find(p => p.id === recordId)
+            if (record) {
+              return {
+                ...r,
+                selectedRecord: recordId,
+                recordInfo: `📍 ${record.missionName}（${record.lat.toFixed(4)}, ${record.lng.toFixed(4)}）`,
+                missionName: record.missionName,
+                lat: record.lat,
+                lng: record.lng
+              }
+            }
+          }
+        }
+        return r
+      })
+    )
   }
 
   const uploadPhotos = async () => {
@@ -78,6 +131,15 @@ export default function PhotoUploader({ photos, onUploadComplete }: PhotoUploade
               } : r
             )
           )
+
+          // ローカルストレージに画像情報を保存
+          saveUploadedImage({
+            photoId: result.photoId,
+            imageUrl: data.imageUrl,
+            missionName: result.missionName,
+            timestamp: new Date().toISOString(),
+            walkId
+          })
         } else {
           // 状態を更新：エラー
           setUploadResults(prev => 
@@ -174,33 +236,113 @@ export default function PhotoUploader({ photos, onUploadComplete }: PhotoUploade
       {uploadResults.length > 0 && (
         <div className="mb-6">
           <h4 className="font-medium text-gray-800 mb-3">選択された写真</h4>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
+          <div className="space-y-3 max-h-96 overflow-y-auto">
             {uploadResults.map((result, index) => (
-              <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                {getStatusIcon(result.status)}
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-800">{result.file.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {(result.file.size / 1024 / 1024).toFixed(2)}MB - {getStatusText(result)}
-                  </p>
+              <div key={index} className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  {getStatusIcon(result.status)}
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-gray-800">{result.file.name}</p>
+                      {result.status === 'pending' && (
+                        <button
+                          onClick={() => removeFile(index)}
+                          className="p-1 hover:bg-gray-200 rounded-full"
+                        >
+                          <X className="h-4 w-4 text-gray-400" />
+                        </button>
+                      )}
+                      {result.status === 'success' && result.imageUrl && (
+                        <img 
+                          src={result.imageUrl} 
+                          alt="Uploaded"
+                          className="w-10 h-10 object-cover rounded-lg"
+                        />
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-500">
+                        {(result.file.size / 1024 / 1024).toFixed(2)}MB
+                      </p>
+                      <p className="text-xs text-gray-600">{getStatusText(result)}</p>
+                    </div>
+
+                    {/* 撮影記録選択 */}
+                    {result.status === 'pending' && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-medium text-gray-700">
+                            この写真を関連付ける：
+                          </label>
+                          <button
+                            onClick={() => setShowMap(!showMap)}
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                          >
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {showMap ? '地図を隠す' : '地図で確認'}
+                          </button>
+                        </div>
+                        <select
+                          value={result.selectedRecord}
+                          onChange={(e) => updateRecordSelection(index, e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="none">🆓 フリー写真（撮影記録なし）</option>
+                          {photoRecords.map((record) => (
+                            <option key={record.id} value={record.id}>
+                              📍 {record.missionName}（{record.lat.toFixed(4)}, {record.lng.toFixed(4)}）
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          現在の選択: <span className="font-medium">{result.recordInfo}</span>
+                        </p>
+                      </div>
+                    )}
+
+                    {result.status === 'success' && (
+                      <div className="mt-2 px-2 py-1 bg-green-100 rounded text-xs text-green-800">
+                        📸 {result.missionName} として保存済み
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {result.status === 'pending' && (
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="p-1 hover:bg-gray-200 rounded-full"
-                  >
-                    <X className="h-4 w-4 text-gray-400" />
-                  </button>
-                )}
-                {result.status === 'success' && result.imageUrl && (
-                  <img 
-                    src={result.imageUrl} 
-                    alt="Uploaded"
-                    className="w-10 h-10 object-cover rounded-lg"
-                  />
-                )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* マップ表示 */}
+      {showMap && photoRecords.length > 0 && (
+        <div className="mb-6">
+          <h4 className="font-medium text-gray-800 mb-3 flex items-center">
+            <MapPin className="h-4 w-4 mr-2" />
+            撮影記録の場所確認
+          </h4>
+          <div className="bg-white rounded-lg shadow-lg p-4">
+            <div className="h-64 rounded-lg overflow-hidden">
+              <Map 
+                photos={photoRecords.map(record => ({
+                  id: record.id,
+                  lat: record.lat,
+                  lng: record.lng,
+                  missionName: record.missionName
+                }))} 
+              />
+            </div>
+            <div className="mt-3 text-sm text-gray-600">
+              <p>📍 各マーカーが撮影記録の場所です</p>
+              <div className="grid grid-cols-1 gap-1 mt-2">
+                {photoRecords.map((record) => (
+                  <div key={record.id} className="flex items-center text-xs">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                    {record.missionName}（{record.lat.toFixed(4)}, {record.lng.toFixed(4)}）
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

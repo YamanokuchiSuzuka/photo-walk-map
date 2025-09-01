@@ -27,6 +27,7 @@ function WalkCompleteContent() {
   const walkData = searchParams.get('data')
   const [summary, setSummary] = useState<WalkSummary | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [walkId, setWalkId] = useState<string>('')
 
   useEffect(() => {
     if (walkData) {
@@ -62,7 +63,15 @@ function WalkCompleteContent() {
       })
 
       if (response.ok) {
-        console.log('散歩データを保存しました')
+        const data = await response.json()
+        console.log('散歩データを保存しました:', data)
+        
+        // 散歩IDを設定
+        if (data.walk?.id) {
+          setWalkId(data.walk.id.toString())
+        } else {
+          setWalkId(`walk_${Date.now()}`)
+        }
       }
     } catch (error) {
       console.error('データ保存エラー:', error)
@@ -172,11 +181,9 @@ function WalkCompleteContent() {
         {/* 写真アップロード */}
         <div className="mb-6">
           <PhotoUploader 
-            photos={summary.photos.map(photo => ({
-              id: photo.id,
-              missionName: photo.missionName,
-              timestamp: new Date()
-            }))}
+            photoRecords={summary.photos} // 撮影記録をそのまま渡す
+            missions={summary.missions}
+            walkId={walkId}
             onUploadComplete={() => {
               console.log('写真アップロード完了')
             }}

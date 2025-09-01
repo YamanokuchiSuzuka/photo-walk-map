@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile } from 'fs/promises'
-import { existsSync, mkdirSync } from 'fs'
-import path from 'path'
+import { v2 as cloudinary } from 'cloudinary'
 import { prisma } from '@/lib/db'
+
+// Cloudinary設定
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
 
 export async function POST(request: NextRequest) {
   try {
-    // Vercel本番環境ではファイルアップロードを一時的に無効化
-    if (process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ 
-        success: false, 
-        message: '本番環境ではファイルアップロードは現在利用できません。開発版をお使いください。' 
-      })
-    }
 
     const data = await request.formData()
     const file: File | null = data.get('file') as unknown as File
@@ -27,49 +25,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: '画像ファイルのみアップロード可能です' })
     }
 
-    // ファイルサイズチェック（5MB制限）
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ success: false, message: 'ファイルサイズは5MB以下にしてください' })
+    // ファイルサイズチェック（10MB制限）
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ success: false, message: 'ファイルサイズは10MB以下にしてください' })
     }
 
+    // ファイルをBase64に変換してCloudinaryにアップロード
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
+    const base64 = `data:${file.type};base64,${buffer.toString('base64')}`
 
-    // ファイル名生成（重複防止のためタイムスタンプ付き）
-    const timestamp = Date.now()
-    const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const fileName = `${timestamp}_${originalName}`
-    
-    // public/uploads ディレクトリに保存
-    const uploadDir = path.join(process.cwd(), 'public/uploads')
-    const filePath = path.join(uploadDir, fileName)
-    
-    try {
-      await writeFile(filePath, buffer)
-    } catch (error) {
-      console.error('ファイル書き込みエラー:', error)
-      // uploads ディレクトリが存在しない場合は作成
-      if (!existsSync(uploadDir)) {
-        mkdirSync(uploadDir, { recursive: true })
-        await writeFile(filePath, buffer)
-      } else {
-        throw error
-      }
-    }
+    // Cloudinaryにアップロード
+    const uploadResult = await cloudinary.uploader.upload(base64, {
+      folder: 'photo-walk-map', // Cloudinary上のフォルダ名
+      public_id: `${Date.now()}_${photoId}`, // ファイル名
+      transformation: [
+        { width: 1200, height: 1200, crop: 'limit' }, // 最大サイズ制限
+        { quality: 'auto' }, // 自動品質最適化
+        { format: 'auto' } // 自動フォーマット選択
+      ]
+    })
 
-    // データベースの写真レコードを更新
-    const imageUrl = `/uploads/${fileName}`
+    // データベースの写真レコードを更新または作成
+    const imageUrl = uploadResult.secure_url
     
     if (photoId) {
-      await prisma.photo.update({
-        where: { id: photoId },
-        data: { imageUrl }
-      })
+      try {
+        await prisma.photo.update({
+          where: { id: photoId },
+          data: { imageUrl }
+        })
+      } catch (error) {
+        console.log('写真レコードが見つからないため、アップロード情報のみ返します。')
+        // レコードが存在しない場合はスキップして、アップロード成功として扱う
+      }
     }
 
     return NextResponse.json({ 
       success: true, 
       imageUrl,
+      publicId: uploadResult.public_id,
       message: '写真をアップロードしました'
     })
 
@@ -100,29 +95,39 @@ export async function PUT(request: NextRequest) {
       const photoId = photoIds[i]
 
       if (!file.type.startsWith('image/')) continue
-      if (file.size > 5 * 1024 * 1024) continue
+      if (file.size > 10 * 1024 * 1024) continue
 
       try {
         const bytes = await file.arrayBuffer()
         const buffer = Buffer.from(bytes)
-        const timestamp = Date.now()
-        const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-        const fileName = `${timestamp}_${i}_${originalName}`
-        
-        const uploadDir = path.join(process.cwd(), 'public/uploads')
-        const filePath = path.join(uploadDir, fileName)
-        
-        await writeFile(filePath, buffer)
-        const imageUrl = `/uploads/${fileName}`
+        const base64 = `data:${file.type};base64,${buffer.toString('base64')}`
+
+        // Cloudinaryにアップロード
+        const uploadResult = await cloudinary.uploader.upload(base64, {
+          folder: 'photo-walk-map',
+          public_id: `${Date.now()}_${i}_${photoId}`,
+          transformation: [
+            { width: 1200, height: 1200, crop: 'limit' },
+            { quality: 'auto' },
+            { format: 'auto' }
+          ]
+        })
+
+        const imageUrl = uploadResult.secure_url
         
         if (photoId) {
-          await prisma.photo.update({
-            where: { id: photoId },
-            data: { imageUrl }
-          })
+          try {
+            await prisma.photo.update({
+              where: { id: photoId },
+              data: { imageUrl }
+            })
+          } catch (error) {
+            console.log(`写真レコード ${photoId} が見つからないため、アップロード情報のみ返します。`)
+            // レコードが存在しない場合はスキップして、アップロード成功として扱う
+          }
         }
 
-        results.push({ photoId, imageUrl, success: true })
+        results.push({ photoId, imageUrl, publicId: uploadResult.public_id, success: true })
       } catch (error) {
         console.error(`ファイル ${i} のアップロードエラー:`, error)
         results.push({ photoId, success: false, error: 'アップロード失敗' })

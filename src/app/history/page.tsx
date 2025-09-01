@@ -4,16 +4,42 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Camera, CheckCircle2, MapPin, Calendar, Clock, Image } from 'lucide-react'
 import Map from '@/components/Map'
+import ImageModal from '@/components/ImageModal'
 import { Walk } from '@/types'
+import { getUploadedImages } from '@/utils/imageStorage'
+
+interface Mission {
+  id?: string
+  name: string
+  description: string
+  completed?: boolean
+}
+
+interface Photo {
+  id: string
+  lat: number
+  lng: number
+  missionName?: string
+  timestamp: string
+  imageUrl?: string
+}
 
 export default function HistoryPage() {
   const [walks, setWalks] = useState<Walk[]>([])
   const [selectedWalk, setSelectedWalk] = useState<Walk | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedImage, setSelectedImage] = useState<{
+    imageUrl: string
+    alt: string
+    missionName: string
+    timestamp: string
+  } | null>(null)
+  const [uploadedImages, setUploadedImages] = useState<any[]>([])
 
   useEffect(() => {
     fetchWalks()
+    setUploadedImages(getUploadedImages())
   }, [])
 
   const fetchWalks = async () => {
@@ -38,8 +64,7 @@ export default function HistoryPage() {
       id: photo.id,
       lat: photo.lat,
       lng: photo.lng,
-      missionName: photo.missionName || 'unknown',
-      walkId: walk.id
+      missionName: photo.missionName || 'unknown'
     }))
   )
 
@@ -113,7 +138,7 @@ export default function HistoryPage() {
               </h2>
               
               {walks.map((walk) => {
-                const completedMissions = walk.missions.filter(m => m.completed).length
+                const completedMissions = walk.missions.filter(m => m.completed || false).length
                 const totalPhotos = walk.photos.length
                 
                 return (
@@ -196,35 +221,54 @@ export default function HistoryPage() {
                     </div>
                     
                     {/* 写真ギャラリー */}
-                    {selectedWalk.photos.filter(photo => photo.imageUrl).length > 0 && (
-                      <div>
-                        <h4 className="font-medium text-gray-700 mb-2 flex items-center">
-                          <Image className="h-4 w-4 mr-1" />
-                          アップロード済み写真
-                        </h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedWalk.photos
-                            .filter(photo => photo.imageUrl)
-                            .map((photo) => (
-                              <div key={photo.id} className="relative">
+                    {(() => {
+                      // データベースからの画像
+                      const dbPhotos = selectedWalk.photos.filter(photo => photo.imageUrl)
+                      
+                      // ローカルストレージからの画像（このwalkIdに関連するもの）
+                      const localPhotos = uploadedImages.filter(img => 
+                        img.walkId === selectedWalk.id.toString() || 
+                        (!img.walkId && selectedWalk.photos.some(p => p.id === img.photoId))
+                      )
+                      
+                      const allPhotos = [...dbPhotos, ...localPhotos.map(img => ({
+                        id: img.photoId,
+                        imageUrl: img.imageUrl,
+                        missionName: img.missionName,
+                        timestamp: img.timestamp
+                      }))]
+                      
+                      return allPhotos.length > 0 ? (
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2 flex items-center">
+                            <Image className="h-4 w-4 mr-1" />
+                            アップロード済み写真
+                          </h4>
+                          <div className="grid grid-cols-2 gap-2">
+                            {allPhotos.map((photo, index) => (
+                              <div key={`${photo.id}-${index}`} className="relative">
                                 <img
                                   src={photo.imageUrl}
                                   alt={photo.missionName || '撮影写真'}
-                                  className="w-full h-20 object-cover rounded-lg hover:opacity-80 transition-opacity cursor-pointer"
+                                  className="w-full h-20 object-cover rounded-lg hover:opacity-80 hover:scale-105 transition-all cursor-pointer"
                                   onClick={() => {
-                                    // モーダル表示などの機能を将来追加可能
-                                    window.open(photo.imageUrl, '_blank')
+                                    setSelectedImage({
+                                      imageUrl: photo.imageUrl!,
+                                      alt: photo.missionName || '撮影写真',
+                                      missionName: photo.missionName || '撮影写真',
+                                      timestamp: photo.timestamp
+                                    })
                                   }}
                                 />
                                 <div className="absolute bottom-1 left-1 bg-black bg-opacity-60 text-white text-xs px-1 rounded">
                                   {photo.missionName}
                                 </div>
                               </div>
-                            ))
-                          }
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      ) : null
+                    })()}
                   </div>
                 )}
                 
@@ -242,6 +286,18 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+      
+      {/* 画像モーダル */}
+      {selectedImage && (
+        <ImageModal
+          imageUrl={selectedImage.imageUrl}
+          alt={selectedImage.alt}
+          missionName={selectedImage.missionName}
+          timestamp={selectedImage.timestamp}
+          isOpen={!!selectedImage}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   )
 }
