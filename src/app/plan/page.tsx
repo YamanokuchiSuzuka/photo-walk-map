@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Target, Sparkles } from 'lucide-react'
 import { generateMissions, getCurrentSeason, getCurrentTimeOfDay } from '@/lib/mission-generator'
@@ -9,6 +9,29 @@ export default function PlanPage() {
   const [startAddress, setStartAddress] = useState('')
   const [endAddress, setEndAddress] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null)
+
+  // 位置情報取得
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          })
+        },
+        (error) => {
+          console.error('位置情報取得エラー:', error)
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5分間キャッシュ
+        }
+      )
+    }
+  }, [])
 
   const handleStartWalk = async () => {
     if (!startAddress.trim() || !endAddress.trim()) {
@@ -29,6 +52,11 @@ export default function PlanPage() {
 
       // 生成されたミッションをlocalStorageに保存
       localStorage.setItem('generatedMissions', JSON.stringify(missions))
+      
+      // 現在地情報をlocalStorageに保存
+      if (currentLocation) {
+        localStorage.setItem('userLocation', JSON.stringify(currentLocation))
+      }
 
       const params = new URLSearchParams({
         start: startAddress,

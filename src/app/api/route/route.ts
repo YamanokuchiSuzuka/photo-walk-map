@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { startAddress, endAddress } = await request.json()
+    const { startAddress, endAddress, userLocation } = await request.json()
     const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
     console.log(`Route request: ${startAddress} -> ${endAddress}`)
+    if (userLocation) {
+      console.log(`User location: [${userLocation.lng}, ${userLocation.lat}]`)
+    }
 
     if (!googleMapsApiKey) {
       console.error('Google Maps API key not configured')
@@ -14,8 +17,8 @@ export async function POST(request: NextRequest) {
 
     // 1. 住所をジオコーディング（緯度経度に変換）
     const [startCoords, endCoords] = await Promise.all([
-      geocodeAddress(startAddress, googleMapsApiKey),
-      geocodeAddress(endAddress, googleMapsApiKey)
+      geocodeAddress(startAddress, googleMapsApiKey, userLocation),
+      geocodeAddress(endAddress, googleMapsApiKey, userLocation)
     ])
 
     if (!startCoords) {
@@ -61,13 +64,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function geocodeAddress(address: string, token: string): Promise<[number, number] | null> {
+async function geocodeAddress(address: string, token: string, userLocation?: { lat: number, lng: number }): Promise<[number, number] | null> {
   try {
+    // 現在地の場合は実際のユーザー位置を使用
+    if (address === '現在地' || address === '現在の場所' || address === '現在') {
+      if (userLocation) {
+        console.log(`ユーザーの実際の現在地を使用: [${userLocation.lng}, ${userLocation.lat}]`)
+        return [userLocation.lng, userLocation.lat]
+      }
+      // フォールバック: 東京駅
+      console.log('ユーザー位置情報がないため東京駅を使用')
+      return [139.7673068, 35.6809591]
+    }
+
     // よく使われる駅の事前定義座標
     const predefinedStations: { [key: string]: [number, number] } = {
-      '現在地': [139.7673068, 35.6809591], // 東京駅
-      '現在の場所': [139.7673068, 35.6809591], // 東京駅
-      '現在': [139.7673068, 35.6809591], // 東京駅
       '東京駅': [139.7673068, 35.6809591],
       '渋谷駅': [139.7016358, 35.6580992],
       '新宿駅': [139.7005713, 35.6896067],

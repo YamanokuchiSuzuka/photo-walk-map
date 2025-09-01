@@ -64,6 +64,10 @@ function WalkPageContent() {
   const fetchRoute = async () => {
     setIsLoadingRoute(true)
     try {
+      // localStorageから位置情報を取得
+      const userLocationStr = localStorage.getItem('userLocation')
+      const userLocation = userLocationStr ? JSON.parse(userLocationStr) : null
+
       const response = await fetch('/api/route', {
         method: 'POST',
         headers: {
@@ -71,7 +75,8 @@ function WalkPageContent() {
         },
         body: JSON.stringify({
           startAddress,
-          endAddress
+          endAddress,
+          userLocation
         })
       })
 
