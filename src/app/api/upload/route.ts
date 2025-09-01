@@ -10,31 +10,57 @@ cloudinary.config({
 })
 
 export async function POST(request: NextRequest) {
-  try {
+  console.log('Upload API called')
+  console.log('Environment check:', {
+    hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+    hasApiKey: !!process.env.CLOUDINARY_API_KEY, 
+    hasApiSecret: !!process.env.CLOUDINARY_API_SECRET,
+    nodeEnv: process.env.NODE_ENV,
+    vercel: process.env.VERCEL
+  })
 
+  // Cloudinary設定チェック
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    console.error('Cloudinary環境変数が設定されていません')
+    return NextResponse.json({ 
+      success: false, 
+      message: 'サーバー設定エラー: Cloudinary環境変数が不足しています' 
+    }, { status: 500 })
+  }
+  
+  try {
+    console.log('FormData取得開始')
     const data = await request.formData()
     const file: File | null = data.get('file') as unknown as File
     const photoId = data.get('photoId') as string
+    console.log('FormData取得完了:', { fileExists: !!file, photoId })
 
     if (!file) {
+      console.log('ファイルが見つかりません')
       return NextResponse.json({ success: false, message: 'ファイルが見つかりません' })
     }
 
     // ファイル形式チェック
+    console.log('ファイル形式チェック:', { type: file.type, name: file.name, size: file.size })
     if (!file.type.startsWith('image/')) {
+      console.log('無効なファイル形式:', file.type)
       return NextResponse.json({ success: false, message: '画像ファイルのみアップロード可能です' })
     }
 
     // ファイルサイズチェック（10MB制限）
     if (file.size > 10 * 1024 * 1024) {
+      console.log('ファイルサイズが大きすぎます:', file.size)
       return NextResponse.json({ success: false, message: 'ファイルサイズは10MB以下にしてください' })
     }
 
+    console.log('Base64変換開始')
     // ファイルをBase64に変換してCloudinaryにアップロード
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     const base64 = `data:${file.type};base64,${buffer.toString('base64')}`
+    console.log('Base64変換完了:', { base64Length: base64.length })
 
+    console.log('Cloudinaryアップロード開始')
     // Cloudinaryにアップロード
     const uploadResult = await cloudinary.uploader.upload(base64, {
       folder: 'photo-walk-map', // Cloudinary上のフォルダ名
@@ -45,20 +71,30 @@ export async function POST(request: NextRequest) {
         { format: 'auto' } // 自動フォーマット選択
       ]
     })
+    console.log('Cloudinaryアップロード完了:', { 
+      publicId: uploadResult.public_id, 
+      secureUrl: uploadResult.secure_url 
+    })
 
     // データベースの写真レコードを更新または作成
     const imageUrl = uploadResult.secure_url
+    console.log('データベース更新処理開始:', { photoId, nodeEnv: process.env.NODE_ENV })
     
+    // データベース更新（本番環境では安全に処理）
     if (photoId) {
       try {
+        console.log('Prisma更新試行:', photoId)
         await prisma.photo.update({
           where: { id: photoId },
           data: { imageUrl }
         })
+        console.log('データベース更新成功:', photoId)
       } catch (error) {
-        console.log('写真レコードが見つからないため、アップロード情報のみ返します。')
-        // レコードが存在しない場合はスキップして、アップロード成功として扱う
+        console.log('写真レコードが見つからないか、データベースエラー:', error)
+        // レコードが存在しない場合はエラーとせず、アップロードは成功として扱う
       }
+    } else {
+      console.log('photoIdが空のため、データベース更新をスキップ')
     }
 
     return NextResponse.json({ 
