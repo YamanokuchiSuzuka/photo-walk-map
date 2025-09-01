@@ -254,6 +254,8 @@ function WalkPageContent() {
         <div className="flex-1 relative">
           <Map 
             onLocationUpdate={(lat, lng) => setCurrentLocation({ lat, lng })}
+            currentLat={currentLocation?.lat}
+            currentLng={currentLocation?.lng}
             photos={photos}
             startLat={routeInfo?.startCoords[1]}
             startLng={routeInfo?.startCoords[0]}

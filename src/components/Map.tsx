@@ -5,6 +5,8 @@ import { Loader } from '@googlemaps/js-api-loader'
 
 interface MapProps {
   onLocationUpdate?: (lat: number, lng: number) => void
+  currentLat?: number
+  currentLng?: number
   startLat?: number
   startLng?: number
   endLat?: number
@@ -21,6 +23,8 @@ interface MapProps {
 
 export default function Map({ 
   onLocationUpdate, 
+  currentLat,
+  currentLng,
   startLat, 
   startLng, 
   endLat, 
@@ -163,6 +167,12 @@ export default function Map({
     clearMarkers()
     const newMarkers: google.maps.Marker[] = []
 
+    // 現在地マーカー
+    if (currentLat && currentLng) {
+      const currentMarker = createMarker(currentLat, currentLng, 'current', '現在地')
+      if (currentMarker) newMarkers.push(currentMarker)
+    }
+
     // スタート地点マーカー
     if (startLat && startLng) {
       const startMarker = createMarker(startLat, startLng, 'start', 'スタート地点')
@@ -197,7 +207,7 @@ export default function Map({
       })
       map.current.fitBounds(bounds)
     }
-  }, [startLat, startLng, endLat, endLng, photosHash, createMarker, clearMarkers])
+  }, [currentLat, currentLng, startLat, startLng, endLat, endLng, photosHash, createMarker, clearMarkers])
 
   const updateRoute = useCallback(() => {
     if (!map.current) return
