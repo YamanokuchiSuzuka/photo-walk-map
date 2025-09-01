@@ -47,13 +47,26 @@ export default function HistoryPage() {
       const response = await fetch('/api/walks')
       if (response.ok) {
         const data = await response.json()
-        setWalks(data.walks)
+        console.log('Fetched walks:', data.walks?.length || 0)
+        setWalks(data.walks || [])
+        
+        // データベースが空でもメッセージを表示しない（ローカル画像があるため）
+        if (data.message && uploadedImages.length === 0) {
+          setError(data.message)
+        }
       } else {
-        setError('散歩履歴の取得に失敗しました')
+        console.log('API response not ok:', response.status)
+        // データベースエラーでもローカル画像があれば表示
+        if (uploadedImages.length === 0) {
+          setError('散歩履歴の取得に失敗しました')
+        }
       }
     } catch (error) {
       console.error('履歴取得エラー:', error)
-      setError('散歩履歴の取得に失敗しました')
+      // ネットワークエラーでもローカル画像があれば表示
+      if (uploadedImages.length === 0) {
+        setError('散歩履歴の取得に失敗しました')
+      }
     } finally {
       setLoading(false)
     }
