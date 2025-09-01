@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useMemo } from 'react'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import { Loader } from '@googlemaps/js-api-loader'
 
 interface MapProps {
   onLocationUpdate?: (lat: number, lng: number) => void
@@ -16,7 +15,7 @@ interface MapProps {
     lng: number
     missionName?: string
   }>
-  routeGeometry?: unknown // GeoJSON geometry for route
+  routeGeometry?: { coordinates: [number, number][] } // Google Maps formatted coordinates
   showRoute?: boolean
 }
 
@@ -31,251 +30,223 @@ export default function Map({
   showRoute = false
 }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<mapboxgl.Map | null>(null)
-  const markers = useRef<mapboxgl.Marker[]>([])
+  const map = useRef<google.maps.Map | null>(null)
+  const markers = useRef<google.maps.Marker[]>([])
+  const routeRenderer = useRef<google.maps.Polyline | null>(null)
   const isInitialized = useRef(false)
 
   // photosの変更を安定化
   const photosHash = useMemo(() => JSON.stringify(photos), [photos])
 
-  const createCustomMarker = useCallback((type: 'current' | 'start' | 'end' | 'photo', content?: string) => {
-    const el = document.createElement('div')
-    
-    switch (type) {
-      case 'current':
-        el.style.width = '20px'
-        el.style.height = '20px'
-        el.style.borderRadius = '50%'
-        el.style.backgroundColor = '#007cbf'
-        el.style.border = '3px solid #fff'
-        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-        break
-      case 'start':
-        el.style.width = '30px'
-        el.style.height = '30px'
-        el.style.borderRadius = '50% 50% 50% 0'
-        el.style.backgroundColor = '#22c55e'
-        el.style.border = '2px solid #fff'
-        el.style.transform = 'rotate(-45deg)'
-        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-        break
-      case 'end':
-        el.style.width = '30px'
-        el.style.height = '30px'
-        el.style.borderRadius = '50% 50% 50% 0'
-        el.style.backgroundColor = '#ef4444'
-        el.style.border = '2px solid #fff'
-        el.style.transform = 'rotate(-45deg)'
-        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-        break
-      case 'photo':
-        el.style.width = '24px'
-        el.style.height = '24px'
-        el.style.borderRadius = '50%'
-        el.style.backgroundColor = '#f59e0b'
-        el.style.border = '2px solid #fff'
-        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-        el.style.display = 'flex'
-        el.style.alignItems = 'center'
-        el.style.justifyContent = 'center'
-        el.style.fontSize = '12px'
-        el.innerHTML = '📸'
-        break
-    }
-    
-    return el
+  const clearMarkers = useCallback(() => {
+    markers.current.forEach(marker => marker.setMap(null))
+    markers.current = []
   }, [])
 
-  // 地図初期化 - 一度だけ実行
-  useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
-    
-    if (!token) {
-      console.error('Mapbox access token is not set')
-      return
+  const clearRoute = useCallback(() => {
+    if (routeRenderer.current) {
+      routeRenderer.current.setMap(null)
+      routeRenderer.current = null
+    }
+  }, [])
+
+  const createMarker = useCallback((
+    lat: number, 
+    lng: number, 
+    type: 'current' | 'start' | 'end' | 'photo',
+    title?: string
+  ) => {
+    if (!map.current) return null
+
+    let icon: google.maps.Icon | google.maps.Symbol
+
+    switch (type) {
+      case 'current':
+        icon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#007cbf',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 3,
+          scale: 10
+        }
+        break
+      case 'start':
+        icon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#10b981',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 3,
+          scale: 15
+        }
+        break
+      case 'end':
+        icon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#ef4444',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 3,
+          scale: 15
+        }
+        break
+      case 'photo':
+        icon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#f59e0b',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+          scale: 8
+        }
+        break
+      default:
+        icon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#6b7280',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+          scale: 8
+        }
     }
 
-    if (isInitialized.current || map.current) return
+    const marker = new google.maps.Marker({
+      position: { lat, lng },
+      map: map.current,
+      icon,
+      title
+    })
 
-    mapboxgl.accessToken = token
+    return marker
+  }, [])
 
-    if (mapContainer.current) {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v11',
-        center: [139.6917, 35.6895],
-        zoom: 14
+  const initializeMap = useCallback(async () => {
+    if (!mapContainer.current || isInitialized.current) return
+
+    try {
+      const loader = new Loader({
+        apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+        version: 'weekly',
+        libraries: ['geometry']
       })
 
-      // 画像エラーを完全に抑制
-      map.current.on('styleimagemissing', (e) => {
-        // 欠けている画像に対してダミー画像を提供
-        if (map.current && !map.current.hasImage(e.id)) {
-          // 1x1pxの透明画像を追加
-          const canvas = document.createElement('canvas')
-          canvas.width = 1
-          canvas.height = 1
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            ctx.clearRect(0, 0, 1, 1)
-            map.current.addImage(e.id, canvas)
-          }
-        }
+      await loader.load()
+
+      map.current = new google.maps.Map(mapContainer.current, {
+        zoom: 13,
+        center: { lat: 35.6762, lng: 139.6503 }, // 東京駅
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
       })
 
-      map.current.on('load', () => {
-        // ルートレイヤーを追加
-        if (map.current) {
-          map.current.addSource('route', {
-            type: 'geojson',
-            data: {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'LineString',
-                coordinates: []
-              }
-            }
-          })
-
-          map.current.addLayer({
-            id: 'route',
-            type: 'line',
-            source: 'route',
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round'
-            },
-            paint: {
-              'line-color': '#3b82f6',
-              'line-width': 6,
-              'line-opacity': 0.8
-            }
-          })
-        }
-
-        // 現在地の取得
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const { latitude, longitude } = position.coords
-              
-              if (map.current) {
-                const currentLocationEl = createCustomMarker('current')
-                new mapboxgl.Marker(currentLocationEl)
-                  .setLngLat([longitude, latitude])
-                  .addTo(map.current)
-                
-                map.current.flyTo({
-                  center: [longitude, latitude],
-                  zoom: 15
-                })
-
-                onLocationUpdate?.(latitude, longitude)
-              }
-            },
-            (error) => {
-              console.error('位置情報の取得に失敗しました:', error)
-            },
-            { enableHighAccuracy: true }
-          )
-        }
-
-        // スタート地点のマーカー
-        if (startLat && startLng && map.current) {
-          const startEl = createCustomMarker('start')
-          new mapboxgl.Marker(startEl)
-            .setLngLat([startLng, startLat])
-            .setPopup(new mapboxgl.Popup().setHTML('<div>スタート地点</div>'))
-            .addTo(map.current)
-        }
-
-        // ゴール地点のマーカー
-        if (endLat && endLng && map.current) {
-          const endEl = createCustomMarker('end')
-          new mapboxgl.Marker(endEl)
-            .setLngLat([endLng, endLat])
-            .setPopup(new mapboxgl.Popup().setHTML('<div>ゴール地点</div>'))
-            .addTo(map.current)
+      // クリックイベント
+      map.current.addListener('click', (e: google.maps.MapMouseEvent) => {
+        if (e.latLng && onLocationUpdate) {
+          const lat = e.latLng.lat()
+          const lng = e.latLng.lng()
+          onLocationUpdate(lat, lng)
         }
       })
 
       isInitialized.current = true
+    } catch (error) {
+      console.error('Google Maps initialization error:', error)
+    }
+  }, [onLocationUpdate])
+
+  const updateMarkers = useCallback(() => {
+    if (!map.current) return
+
+    clearMarkers()
+    const newMarkers: google.maps.Marker[] = []
+
+    // スタート地点マーカー
+    if (startLat && startLng) {
+      const startMarker = createMarker(startLat, startLng, 'start', 'スタート地点')
+      if (startMarker) newMarkers.push(startMarker)
     }
 
-    return () => {
-      if (map.current) {
-        markers.current.forEach(marker => marker.remove())
-        map.current.remove()
-        map.current = null
-        isInitialized.current = false
-      }
+    // ゴール地点マーカー
+    if (endLat && endLng) {
+      const endMarker = createMarker(endLat, endLng, 'end', 'ゴール地点')
+      if (endMarker) newMarkers.push(endMarker)
     }
-  }, []) // 依存関係を空配列にして一度だけ実行
 
-  // 撮影地点マーカーの更新 - photosHashで安定化
-  useEffect(() => {
-    if (!map.current || !isInitialized.current) return
-
-    // 既存の撮影マーカーを削除
-    markers.current.forEach(marker => marker.remove())
-    markers.current = []
-
-    // 新しい撮影マーカーを追加
-    photos.forEach((photo) => {
-      if (map.current) {
-        const photoEl = createCustomMarker('photo')
-        const marker = new mapboxgl.Marker(photoEl)
-          .setLngLat([photo.lng, photo.lat])
-        
-        if (photo.missionName) {
-          marker.setPopup(
-            new mapboxgl.Popup().setHTML(`<div>📸 ${photo.missionName}</div>`)
-          )
-        }
-        
-        marker.addTo(map.current)
-        markers.current.push(marker)
-      }
+    // 写真マーカー
+    photos.forEach(photo => {
+      const photoMarker = createMarker(
+        photo.lat, 
+        photo.lng, 
+        'photo', 
+        photo.missionName || 'ミッション写真'
+      )
+      if (photoMarker) newMarkers.push(photoMarker)
     })
-  }, [photosHash, createCustomMarker]) // photosHashを使用して安定化
 
-  // ルート表示の更新
-  useEffect(() => {
-    if (!map.current || !isInitialized.current || !routeGeometry) return
+    markers.current = newMarkers
 
-    const source = map.current.getSource('route') as mapboxgl.GeoJSONSource
-    if (source) {
-      source.setData({
-        type: 'Feature',
-        properties: {},
-        geometry: routeGeometry
+    // マップの表示範囲を調整
+    if (newMarkers.length > 0) {
+      const bounds = new google.maps.LatLngBounds()
+      newMarkers.forEach(marker => {
+        const position = marker.getPosition()
+        if (position) bounds.extend(position)
+      })
+      map.current.fitBounds(bounds)
+    }
+  }, [startLat, startLng, endLat, endLng, photosHash, createMarker, clearMarkers])
+
+  const updateRoute = useCallback(() => {
+    if (!map.current) return
+
+    clearRoute()
+
+    if (showRoute && routeGeometry?.coordinates && routeGeometry.coordinates.length > 0) {
+      const path = routeGeometry.coordinates.map(coord => ({
+        lat: coord[1], // Google Maps uses [lat, lng]
+        lng: coord[0]
+      }))
+
+      const polyline = new google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#2563eb',
+        strokeOpacity: 1.0,
+        strokeWeight: 4,
       })
 
-      // ルートがある場合は地図をルート全体に合わせる
-      if (routeGeometry.coordinates && routeGeometry.coordinates.length > 0) {
-        const coordinates = routeGeometry.coordinates
-        const bounds = coordinates.reduce((bounds: mapboxgl.LngLatBounds, coord: [number, number]) => {
-          return bounds.extend(coord as [number, number])
-        }, new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]))
-
-        map.current.fitBounds(bounds, {
-          padding: 50
-        })
-      }
+      polyline.setMap(map.current)
+      routeRenderer.current = polyline
     }
-  }, [routeGeometry, showRoute])
+  }, [showRoute, routeGeometry, clearRoute])
 
-  if (!process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-center p-6">
-          <p className="text-gray-600 mb-2">地図を表示するには</p>
-          <p className="text-sm text-gray-500">Mapbox APIキーの設定が必要です</p>
-        </div>
-      </div>
-    )
-  }
+  // 初期化
+  useEffect(() => {
+    initializeMap()
+  }, [initializeMap])
 
-  return <div ref={mapContainer} className="w-full h-full" />
+  // マーカー更新
+  useEffect(() => {
+    if (isInitialized.current) {
+      updateMarkers()
+    }
+  }, [updateMarkers])
+
+  // ルート更新
+  useEffect(() => {
+    if (isInitialized.current) {
+      updateRoute()
+    }
+  }, [updateRoute])
+
+  return (
+    <div 
+      ref={mapContainer} 
+      className="w-full h-full min-h-[400px] bg-gray-100 rounded-lg"
+      style={{ minHeight: '400px' }}
+    />
+  )
 }
