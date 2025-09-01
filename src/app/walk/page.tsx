@@ -104,9 +104,44 @@ function WalkPageContent() {
       setMissions(getDefaultMissions())
     }
   }, [])
-  
+
   const [selectedMission, setSelectedMission] = useState<string>('')
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null)
+
+  // 位置情報取得
+  useEffect(() => {
+    if (navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          setCurrentLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          })
+        },
+        (error) => {
+          console.error('位置情報取得エラー:', error)
+          // エラーの場合は東京駅を設定
+          setCurrentLocation({
+            lat: 35.6762,
+            lng: 139.6503
+          })
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5分間キャッシュ
+        }
+      )
+
+      return () => navigator.geolocation.clearWatch(watchId)
+    } else {
+      // 位置情報が利用できない場合は東京駅を設定
+      setCurrentLocation({
+        lat: 35.6762,
+        lng: 139.6503
+      })
+    }
+  }, [])
   const [photos, setPhotos] = useState<Array<{id: string, lat: number, lng: number, missionName: string}>>([])
 
   const handlePhotoTaken = () => {
