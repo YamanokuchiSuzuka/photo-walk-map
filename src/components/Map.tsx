@@ -108,8 +108,19 @@ export default function Map({
       })
 
       // 画像エラーを完全に抑制
-      map.current.on('styleimagemissing', () => {
-        // エラーを無視して何もしない
+      map.current.on('styleimagemissing', (e) => {
+        // 欠けている画像に対してダミー画像を提供
+        if (map.current && !map.current.hasImage(e.id)) {
+          // 1x1pxの透明画像を追加
+          const canvas = document.createElement('canvas')
+          canvas.width = 1
+          canvas.height = 1
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.clearRect(0, 0, 1, 1)
+            map.current.addImage(e.id, canvas)
+          }
+        }
       })
 
       map.current.on('load', () => {

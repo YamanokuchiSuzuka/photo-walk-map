@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db'
 export async function POST(request: NextRequest) {
   try {
     // Vercel本番環境ではファイルアップロードを一時的に無効化
-    if (process.env.VERCEL === '1') {
+    if (process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') {
       return NextResponse.json({ 
         success: false, 
         message: '本番環境ではファイルアップロードは現在利用できません。開発版をお使いください。' 

@@ -3,19 +3,19 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const { startAddress, endAddress } = await request.json()
-    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+    const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
     console.log(`Route request: ${startAddress} -> ${endAddress}`)
 
-    if (!mapboxToken) {
-      console.error('Mapbox token not configured')
-      return NextResponse.json({ error: 'Mapbox token not configured' }, { status: 500 })
+    if (!googleMapsApiKey) {
+      console.error('Google Maps API key not configured')
+      return NextResponse.json({ error: 'Google Maps API key not configured' }, { status: 500 })
     }
 
     // 1. 住所をジオコーディング（緯度経度に変換）
     const [startCoords, endCoords] = await Promise.all([
-      geocodeAddress(startAddress, mapboxToken),
-      geocodeAddress(endAddress, mapboxToken)
+      geocodeAddress(startAddress, googleMapsApiKey),
+      geocodeAddress(endAddress, googleMapsApiKey)
     ])
 
     if (!startCoords) {
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. 徒歩ルートを取得
-    const routeData = await getWalkingRoute(startCoords, endCoords, mapboxToken)
+    const routeData = await getWalkingRoute(startCoords, endCoords, googleMapsApiKey)
 
     if (!routeData) {
       return NextResponse.json({ 
@@ -99,7 +99,7 @@ async function geocodeAddress(address: string, token: string): Promise<[number, 
     }
 
     const encodedAddress = encodeURIComponent(address)
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${token}&country=JP&limit=1`
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&region=JP&key=${token}`
     
     console.log(`Geocoding request for: ${address}`)
     console.log(`URL: ${url}`)
@@ -109,8 +109,8 @@ async function geocodeAddress(address: string, token: string): Promise<[number, 
 
     console.log(`Geocoding response for "${address}":`, JSON.stringify(data, null, 2))
 
-    if (data.features && data.features.length > 0) {
-      const [lng, lat] = data.features[0].center
+    if (data.results && data.results.length > 0) {
+      const { lat, lng } = data.results[0].geometry.location
       console.log(`Found coordinates for "${address}": [${lng}, ${lat}]`)
       return [lng, lat]
     }
@@ -143,7 +143,7 @@ async function getWalkingRoute(
       return null
     }
     
-    const url = `https://api.mapbox.com/directions/v5/mapbox/walking/${startLng},${startLat};${endLng},${endLat}?access_token=${token}&geometries=geojson&steps=true&banner_instructions=true&voice_instructions=true`
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${startLat},${startLng}&destination=${endLat},${endLng}&mode=walking&key=${token}&language=ja&region=JP`
     
     console.log(`Directions API URL: ${url}`)
     
@@ -160,8 +160,27 @@ async function getWalkingRoute(
 
     if (data.routes && data.routes.length > 0) {
       const route = data.routes[0]
-      console.log(`Route found: ${(route.distance/1000).toFixed(1)}km, ${Math.round(route.duration/60)}min`)
-      return route
+      const leg = route.legs[0]
+      console.log(`Route found: ${(leg.distance.value/1000).toFixed(1)}km, ${Math.round(leg.duration.value/60)}min`)
+      
+      // Google Maps形式をMapbox形式に変換
+      return {
+        distance: leg.distance.value,
+        duration: leg.duration.value,
+        geometry: {
+          coordinates: route.overview_polyline ? decodePolyline(route.overview_polyline.points) : []
+        },
+        legs: [{
+          steps: leg.steps?.map((step: any) => ({
+            instruction: step.html_instructions,
+            distance: step.distance.value,
+            duration: step.duration.value,
+            geometry: {
+              coordinates: step.polyline ? decodePolyline(step.polyline.points) : []
+            }
+          })) || []
+        }]
+      }
     }
 
     console.log('No routes found in response')
@@ -170,4 +189,39 @@ async function getWalkingRoute(
     console.error('Routing error:', error)
     return null
   }
+}
+
+function decodePolyline(encoded: string): [number, number][] {
+  const poly = []
+  let index = 0
+  const len = encoded.length
+  let lat = 0
+  let lng = 0
+
+  while (index < len) {
+    let b: number
+    let shift = 0
+    let result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1))
+    lat += dlat
+
+    shift = 0
+    result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1))
+    lng += dlng
+
+    poly.push([lng / 1e5, lat / 1e5])
+  }
+
+  return poly
 }
